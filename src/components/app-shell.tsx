@@ -70,7 +70,6 @@ export default function AppShell({
                     ${ativo ? "bg-recover-500 font-medium text-navy-900" : "text-white/70 hover:bg-white/10 hover:text-white"}`}>
                   <Icon size={17} />
                   <span className="flex-1">{i.label}</span>
-                  {!i.ready && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-white/50">em breve</span>}
                 </Link>
               );
             })}

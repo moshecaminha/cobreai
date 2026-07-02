@@ -1,4 +1,20 @@
-import EmConstrucao from "@/components/em-construcao";
-export default function Page() {
-  return <EmConstrucao titulo="Templates" descricao="Mensagens personalizadas para disparos." />;
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { Plus, Pencil, Trash2, X } from "lucide-react";
+const VARS=["{{cliente_nome}}","{{valor}}","{{vencimento}}","{{numero_cobranca}}","{{link_pagamento}}","{{empresa_nome}}","{{dias_atraso}}"];
+export default function Templates(){
+  const router=useRouter();const sb=supabaseBrowser();const [empresaId,setEmpresaId]=useState<string|null>(null);const [rows,setRows]=useState<any[]>([]);const [form,setForm]=useState<any|undefined>(undefined);
+  async function carregar(){const {data:{user}}=await sb.auth.getUser();if(!user){router.push("/login");return;}const {data:u}=await sb.from("usuarios").select("empresa_id").eq("id",user.id).maybeSingle();if(!u){router.push("/onboarding");return;}setEmpresaId(u.empresa_id);const {data}=await sb.from("templates_mensagem").select("*").order("created_at",{ascending:false});setRows(data??[]);}
+  useEffect(()=>{carregar();},[]);
+  async function salvar(){if(!empresaId||!form?.nome||!form?.conteudo)return;const p={empresa_id:empresaId,nome:form.nome,tipo:form.tipo||"cobranca",conteudo:form.conteudo,is_ativo:true};const q=form.id?sb.from("templates_mensagem").update(p).eq("id",form.id):sb.from("templates_mensagem").insert(p);const {error}=await q;if(!error){setForm(undefined);carregar();}}
+  async function excluir(id:string){if(!confirm("Excluir?"))return;await sb.from("templates_mensagem").delete().eq("id",id);carregar();}
+  const I="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500";
+  return (<div className="mx-auto max-w-5xl px-6 py-8"><div className="flex items-center justify-between"><div><h1 className="font-display text-2xl font-bold text-ink-100">Templates</h1><p className="mt-1 text-ink-300">Mensagens com variáveis.</p></div><button onClick={()=>setForm({})} className="inline-flex items-center gap-2 rounded-lg bg-recover-500 px-4 py-2.5 font-medium text-navy-900 hover:bg-recover-400"><Plus size={18}/> Novo template</button></div>
+    <div className="mt-4 flex flex-wrap gap-2">{VARS.map(v=><span key={v} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-ink-300">{v}</span>)}</div>
+    <div className="mt-6 grid gap-3 md:grid-cols-2">{rows.length===0&&<p className="text-ink-500">Nenhum template.</p>}{rows.map(r=>(<div key={r.id} className="rounded-xl border border-white/10 bg-navy-800/60 p-5"><div className="flex items-center justify-between"><div className="font-display font-medium text-ink-100">{r.nome} <span className="text-xs text-ink-500">· {r.tipo}</span></div><div className="flex gap-2"><button onClick={()=>setForm(r)} className="text-ink-500 hover:text-recover-400"><Pencil size={16}/></button><button onClick={()=>excluir(r.id)} className="text-ink-500 hover:text-danger-500"><Trash2 size={16}/></button></div></div><p className="mt-3 whitespace-pre-wrap text-sm text-ink-300">{r.conteudo}</p></div>))}</div>
+    {form!==undefined&&(<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"><div className="my-8 w-full max-w-lg rounded-2xl border border-white/10 bg-navy-800 p-6"><div className="flex items-center justify-between"><h2 className="font-display text-xl font-bold text-ink-100">{form.id?"Editar":"Novo"} template</h2><button onClick={()=>setForm(undefined)} className="text-ink-500 hover:text-ink-100"><X size={20}/></button></div>
+      <div className="mt-5 grid gap-4"><div className="grid grid-cols-2 gap-4"><input className={I} placeholder="Nome" value={form.nome||""} onChange={e=>setForm({...form,nome:e.target.value})}/><select className={I} value={form.tipo||"cobranca"} onChange={e=>setForm({...form,tipo:e.target.value})}><option value="cobranca">Cobrança</option><option value="lembrete">Lembrete</option><option value="confirmacao">Confirmação</option><option value="boas_vindas">Boas-vindas</option></select></div><textarea className={I} rows={7} placeholder="Mensagem…" value={form.conteudo||""} onChange={e=>setForm({...form,conteudo:e.target.value})}/><div className="flex justify-end gap-2"><button onClick={()=>setForm(undefined)} className="rounded-lg border border-white/15 px-4 py-2.5 text-sm text-ink-100 hover:bg-white/5">Cancelar</button><button onClick={salvar} className="rounded-lg bg-recover-500 px-6 py-2.5 font-medium text-navy-900">Salvar</button></div></div></div></div>)}
+  </div>);
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import SyncButton from "./sync-button";
+import GerarLote from "./gerar-lote";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function EscopoDetalhe({ params }: { params: { id: string }
             CNAE: {escopo.cnaes_principais?.join(", ") || "—"} · {escopo.municipios?.join(", ") || escopo.ufs?.join(", ") || "—"}
           </p>
         </div>
-        <SyncButton id={params.id} />
+        <div className="flex items-center gap-3"><GerarLote escopoId={params.id} /><SyncButton id={params.id} /></div>
       </div>
 
       <div className="mt-8 overflow-hidden rounded-2xl border border-white/10">

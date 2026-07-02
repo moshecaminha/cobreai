@@ -1,4 +1,18 @@
-import EmConstrucao from "@/components/em-construcao";
-export default function Page() {
-  return <EmConstrucao titulo="Agendamentos" descricao="Envios automáticos recorrentes." />;
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { Plus, Trash2, X } from "lucide-react";
+export default function Agendamentos(){
+  const router=useRouter();const sb=supabaseBrowser();const [empresaId,setEmpresaId]=useState<string|null>(null);const [rows,setRows]=useState<any[]>([]);const [form,setForm]=useState<any|undefined>(undefined);
+  async function carregar(){const {data:{user}}=await sb.auth.getUser();if(!user){router.push("/login");return;}const {data:u}=await sb.from("usuarios").select("empresa_id").eq("id",user.id).maybeSingle();if(!u){router.push("/onboarding");return;}setEmpresaId(u.empresa_id);const {data}=await sb.from("agendamentos_disparo").select("*").order("data_hora");setRows(data??[]);}
+  useEffect(()=>{carregar();},[]);
+  async function salvar(){if(!empresaId||!form?.nome)return;const {error}=await sb.from("agendamentos_disparo").insert({empresa_id:empresaId,nome:form.nome,data_hora:form.data_hora||null,canal:form.canal||"whatsapp",is_ativo:true,status:"agendado"});if(!error){setForm(undefined);carregar();}}
+  async function excluir(id:string){await sb.from("agendamentos_disparo").delete().eq("id",id);carregar();}
+  const I="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500";const L="block text-xs text-ink-500";
+  return (<div className="mx-auto max-w-4xl px-6 py-8"><div className="flex items-center justify-between"><div><h1 className="font-display text-2xl font-bold text-ink-100">Agendamentos</h1><p className="mt-1 text-ink-300">Disparos programados.</p></div><button onClick={()=>setForm({canal:"whatsapp"})} className="inline-flex items-center gap-2 rounded-lg bg-recover-500 px-4 py-2.5 font-medium text-navy-900 hover:bg-recover-400"><Plus size={18}/> Novo agendamento</button></div>
+    <div className="mt-6 space-y-2">{rows.length===0&&<p className="text-ink-500">Nenhum agendamento.</p>}{rows.map(r=>(<div key={r.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-4"><div><div className="text-ink-100">{r.nome}</div><div className="text-xs text-ink-500">{r.canal} · {r.data_hora?new Date(r.data_hora).toLocaleString("pt-BR"):"sem data"}</div></div><div className="flex items-center gap-3"><span className="rounded-full bg-navy-600 px-2 py-0.5 text-xs text-ink-300">{r.status}</span><button onClick={()=>excluir(r.id)} className="text-ink-500 hover:text-danger-500"><Trash2 size={16}/></button></div></div>))}</div>
+    {form!==undefined&&(<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"><div className="my-8 w-full max-w-lg rounded-2xl border border-white/10 bg-navy-800 p-6"><div className="flex items-center justify-between"><h2 className="font-display text-xl font-bold text-ink-100">Novo agendamento</h2><button onClick={()=>setForm(undefined)} className="text-ink-500 hover:text-ink-100"><X size={20}/></button></div>
+      <div className="mt-5 grid gap-4"><div><label className={L}>Nome *</label><input className={I} value={form.nome||""} onChange={e=>setForm({...form,nome:e.target.value})}/></div><div className="grid grid-cols-2 gap-4"><div><label className={L}>Data e hora</label><input type="datetime-local" className={I} value={form.data_hora||""} onChange={e=>setForm({...form,data_hora:e.target.value})}/></div><div><label className={L}>Canal</label><select className={I} value={form.canal} onChange={e=>setForm({...form,canal:e.target.value})}><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option><option value="sms">SMS</option></select></div></div><div className="flex justify-end gap-2"><button onClick={()=>setForm(undefined)} className="rounded-lg border border-white/15 px-4 py-2.5 text-sm text-ink-100 hover:bg-white/5">Cancelar</button><button onClick={salvar} className="rounded-lg bg-recover-500 px-6 py-2.5 font-medium text-navy-900">Salvar</button></div></div></div></div>)}
+  </div>);
 }

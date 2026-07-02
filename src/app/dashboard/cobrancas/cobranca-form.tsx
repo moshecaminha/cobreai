@@ -1,0 +1,17 @@
+"use client";
+import { useEffect, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { X } from "lucide-react";
+export default function CobrancaForm({empresaId,onClose,onSaved}:{empresaId:string;onClose:()=>void;onSaved:()=>void}){
+  const sb=supabaseBrowser();const [clientes,setClientes]=useState<any[]>([]);const [f,setF]=useState<any>({cliente_id:"",descricao:"",valor:"",vencimento_date:"",metodo_pagamento:"pix"});const [erro,setErro]=useState<string|null>(null);const [loading,setLoading]=useState(false);
+  useEffect(()=>{(async()=>{const {data}=await sb.from("clientes").select("id,nome").eq("is_ativo",true).order("nome");setClientes(data??[]);})();},[]);
+  async function salvar(){setErro(null);if(!f.cliente_id)return setErro("Selecione o cliente.");if(!f.valor||Number(f.valor)<=0)return setErro("Valor inválido.");if(!f.vencimento_date)return setErro("Informe o vencimento.");setLoading(true);
+    const {error}=await sb.from("cobrancas").insert({empresa_id:empresaId,cliente_id:f.cliente_id,numero:"COB-"+Date.now().toString(36).toUpperCase(),descricao:f.descricao||null,valor:Number(f.valor),vencimento_date:f.vencimento_date,status:"pendente",metodo_pagamento:f.metodo_pagamento});
+    setLoading(false);if(error)return setErro("Erro ao salvar.");onSaved();}
+  const I="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500";const L="block text-xs text-ink-500";
+  return (<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"><div className="my-8 w-full max-w-lg rounded-2xl border border-white/10 bg-navy-800 p-6"><div className="flex items-center justify-between"><h2 className="font-display text-xl font-bold text-ink-100">Nova cobrança</h2><button onClick={onClose} className="text-ink-500 hover:text-ink-100"><X size={20}/></button></div>
+    <div className="mt-5 grid gap-4"><div><label className={L}>Cliente *</label><select className={I} value={f.cliente_id} onChange={e=>setF({...f,cliente_id:e.target.value})}><option value="">Selecione…</option>{clientes.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+      <div><label className={L}>Descrição</label><input className={I} value={f.descricao} onChange={e=>setF({...f,descricao:e.target.value})}/></div>
+      <div className="grid grid-cols-3 gap-4"><div><label className={L}>Valor (R$) *</label><input className={I} value={f.valor} onChange={e=>setF({...f,valor:e.target.value})}/></div><div><label className={L}>Vencimento *</label><input type="date" className={I} value={f.vencimento_date} onChange={e=>setF({...f,vencimento_date:e.target.value})}/></div><div><label className={L}>Método</label><select className={I} value={f.metodo_pagamento} onChange={e=>setF({...f,metodo_pagamento:e.target.value})}><option value="pix">PIX</option><option value="boleto">Boleto</option></select></div></div>
+      {erro&&<p className="text-sm text-danger-500">{erro}</p>}<div className="flex justify-end gap-2"><button onClick={onClose} className="rounded-lg border border-white/15 px-4 py-2.5 text-sm text-ink-100 hover:bg-white/5">Cancelar</button><button onClick={salvar} disabled={loading} className="rounded-lg bg-recover-500 px-6 py-2.5 font-medium text-navy-900 disabled:opacity-50">{loading?"Salvando…":"Criar"}</button></div></div></div></div>);
+}

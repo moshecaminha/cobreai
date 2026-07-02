@@ -1,4 +1,17 @@
-import EmConstrucao from "@/components/em-construcao";
-export default function Page() {
-  return <EmConstrucao titulo="Régua de Cobrança" descricao="Cadência automática de lembretes." />;
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { Plus, Trash2 } from "lucide-react";
+export default function Regua(){
+  const router=useRouter();const sb=supabaseBrowser();const [empresaId,setEmpresaId]=useState<string|null>(null);const [rows,setRows]=useState<any[]>([]);const [n,setN]=useState<any>({nome:"",dias_offset:-3,canal:"whatsapp"});
+  async function carregar(){const {data:{user}}=await sb.auth.getUser();if(!user){router.push("/login");return;}const {data:u}=await sb.from("usuarios").select("empresa_id").eq("id",user.id).maybeSingle();if(!u){router.push("/onboarding");return;}setEmpresaId(u.empresa_id);const {data}=await sb.from("regua_cobranca").select("*").order("dias_offset");setRows(data??[]);}
+  useEffect(()=>{carregar();},[]);
+  async function add(){if(!empresaId||!n.nome)return;const {error}=await sb.from("regua_cobranca").insert({empresa_id:empresaId,nome:n.nome,dias_offset:Number(n.dias_offset)||0,enviar_whatsapp:n.canal==="whatsapp",enviar_email:n.canal==="email",enviar_sms:n.canal==="sms",is_ativo:true});if(!error){setN({nome:"",dias_offset:-3,canal:"whatsapp"});carregar();}}
+  async function excluir(id:string){await sb.from("regua_cobranca").delete().eq("id",id);carregar();}
+  function cn(r:any){return r.enviar_whatsapp?"WhatsApp":r.enviar_email?"E-mail":r.enviar_sms?"SMS":"—";}
+  const I="rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500";
+  return (<div className="mx-auto max-w-4xl px-6 py-8"><h1 className="font-display text-2xl font-bold text-ink-100">Régua de Cobrança</h1><p className="mt-1 text-ink-300">Dias negativos = antes; positivos = depois do vencimento.</p>
+    <div className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border border-white/10 bg-navy-800/60 p-5"><div className="flex-1 min-w-[180px]"><label className="block text-xs text-ink-500">Descrição</label><input className={I+" mt-1 w-full"} placeholder="Lembrete 3 dias antes" value={n.nome} onChange={e=>setN({...n,nome:e.target.value})}/></div><div><label className="block text-xs text-ink-500">Dias</label><input type="number" className={I+" mt-1 w-24"} value={n.dias_offset} onChange={e=>setN({...n,dias_offset:e.target.value})}/></div><div><label className="block text-xs text-ink-500">Canal</label><select className={I+" mt-1"} value={n.canal} onChange={e=>setN({...n,canal:e.target.value})}><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option><option value="sms">SMS</option></select></div><button onClick={add} className="inline-flex items-center gap-2 rounded-lg bg-recover-500 px-4 py-2.5 font-medium text-navy-900 hover:bg-recover-400"><Plus size={18}/> Adicionar</button></div>
+    <div className="mt-4 space-y-2">{rows.length===0&&<p className="text-ink-500">Nenhuma etapa.</p>}{rows.map(r=>(<div key={r.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-center gap-4"><span className={`grid h-10 w-14 place-items-center rounded-lg font-display font-bold ${r.dias_offset<0?"bg-recover-500/15 text-recover-400":r.dias_offset===0?"bg-amber-500/15 text-amber-500":"bg-danger-500/15 text-danger-500"}`}>{r.dias_offset>0?`+${r.dias_offset}`:r.dias_offset}d</span><div><div className="text-ink-100">{r.nome}</div><div className="text-xs text-ink-500">{cn(r)}</div></div></div><button onClick={()=>excluir(r.id)} className="text-ink-500 hover:text-danger-500"><Trash2 size={16}/></button></div>))}</div></div>);
 }
