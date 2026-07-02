@@ -54,12 +54,12 @@ export default async function Dashboard() {
         <Kpi label="Cobranças" value={String(cobrancas ?? 0)} />
       </div>
 
-      <div className="mt-8 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
+      <a href="/dashboard/escopos" className="mt-8 block rounded-2xl border border-white/15 bg-white/[0.03] p-8 text-center transition hover:border-recover-500/50">
         <p className="text-ink-300">
-          Próximo passo: criar um <span className="text-ink-100">escopo sindical</span> (CNAE + cidade) e rodar a primeira
-          sincronização com a Receita.
+          Próximo passo: criar um <span className="text-recover-400 font-medium">escopo sindical</span> (CNAE + cidade) e rodar a primeira
+          sincronização com a Receita. <span className="text-ink-100">Clique para abrir →</span>
         </p>
-      </div>
+      </a>
     </main>
   );
 }
