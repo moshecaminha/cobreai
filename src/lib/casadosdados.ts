@@ -1,55 +1,39 @@
 /**
  * Casa dos Dados — Cliente da API v5
- * Docs: https://docs.casadosdados.com.br
- *
- * Autenticação: header `api-key` (chave por tenant, pré-paga, saldo > 0).
- * Esta é a fonte paga da Receita escolhida para alimentar a Base Sindical.
- *
- * Endpoints usados:
- *  - POST /v5/cnpj/pesquisa          → pesquisa avançada (síncrona, paginada)
- *  - POST /v5/cnpj/pesquisa/arquivo  → geração de arquivo em lote (assíncrona, retorna uuid)
- *  - GET  /v5/saldo                  → saldo da conta  (confirmar caminho exato na doc)
+ * Docs: https://docs.casadosdados.com.br  (schema confirmado em 2025-07-16)
+ * Auth: header `api-key`. Endpoints:
+ *   POST /v5/cnpj/pesquisa           → pesquisa avançada, corpo PLANO, resposta { total, cnpjs[] }
+ *   POST /v5/cnpj/pesquisa/arquivo   → geração de arquivo (assíncrona)
+ *   GET  /v5/saldo                   → saldo
  */
-
 const BASE_URL = "https://api.casadosdados.com.br";
 
-// ---------------------------------------------------------------------------
-// Tipos do filtro (schema CNPJPesquisaSolicitacao.pesquisa — confirmado na doc)
-// ---------------------------------------------------------------------------
+/** remove acentos e normaliza p/ o formato aceito pela Casa dos Dados. */
+function semAcento(s: string) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+const soDigitos = (s: string) => (s || "").replace(/\D/g, "");
+
 export interface FiltroPesquisa {
   cnpj?: string[];
   cnpj_raiz?: string[];
-  busca_textual?: Array<{
-    texto: string[];
-    tipo_busca?: "exata" | "uma_ou_mais" | "todas";
-    razao_social?: boolean;
-    nome_fantasia?: boolean;
-    nome_socio?: boolean;
-  }>;
-  codigo_atividade_principal?: string[];   // CNAEs principais (escopo sindical)
+  busca_textual?: any[];
+  codigo_atividade_principal?: string[];
   incluir_atividade_secundaria?: boolean;
   codigo_atividade_secundaria?: string[];
   codigo_natureza_juridica?: string[];
   situacao_cadastral?: Array<"ATIVA" | "BAIXADA" | "INAPTA" | "SUSPENSA" | "NULA">;
   matriz_filial?: "MATRIZ" | "FILIAL";
   cep?: string[];
-  uf?: string[];                           // ['pe','sp']
-  municipio?: string[];                    // ['recife','olinda']
+  uf?: string[];
+  municipio?: string[];
   bairro?: string[];
   ddd?: string[];
   data_abertura?: { inicio?: string; fim?: string; ultimos_dias?: number };
   capital_social?: { minimo?: number; maximo?: number };
   porte_empresa?: { codigos: string[] };
-  mei?: { optante?: boolean; excluir_optante?: boolean };
-  simples?: { optante?: boolean; excluir_optante?: boolean };
-  mais_filtros?: {
-    somente_matriz?: boolean;
-    com_email?: boolean;
-    com_telefone?: boolean;
-    excluir_empresas_visualizadas?: boolean;
-  };
-  excluir?: { cnpj?: string[] };
-  limite?: number;                         // por página
+  mais_filtros?: Record<string, boolean>;
+  limite?: number;
   pagina?: number;
 }
 
@@ -72,131 +56,100 @@ export interface EmpresaBaseInput {
 }
 
 export class CasaDosDadosError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-    this.name = "CasaDosDadosError";
-  }
+  constructor(public status: number, message: string) { super(message); this.name = "CasaDosDadosError"; }
 }
 
 export class CasaDosDados {
   constructor(private apiKey: string, private baseUrl: string = BASE_URL) {}
-
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...init,
-      headers: {
-        "api-key": this.apiKey,
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers: { "api-key": this.apiKey, "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      // 401 chave inválida · 403 sem saldo/proibido · 400 payload inválido
-      throw new CasaDosDadosError(res.status, `Casa dos Dados ${res.status}: ${body}`);
+      throw new CasaDosDadosError(res.status, body || `HTTP ${res.status}`);
     }
     return res.json() as Promise<T>;
   }
-
-  /** Pesquisa avançada síncrona e paginada. Filtra por CNAE + município + situação etc. */
-  async pesquisar(filtro: FiltroPesquisa): Promise<any> {
-    return this.req("/v5/cnpj/pesquisa", {
-      method: "POST",
-      body: JSON.stringify(filtro),
-    });
+  /** Pesquisa avançada. Retorna { total, cnpjs: [...] }. */
+  async pesquisar(filtro: FiltroPesquisa): Promise<{ total: number; cnpjs: any[] }> {
+    return this.req("/v5/cnpj/pesquisa", { method: "POST", body: JSON.stringify(filtro) });
   }
-
-  /** Geração de arquivo (CSV/Excel) em lote — ideal para grandes recortes. Retorna { arquivo_uuid }. */
-  async gerarArquivo(opts: {
-    nome: string;
-    tipo: "csv" | "excel";
-    total_linhas?: number;
-    enviar_para?: string[];
-    pesquisa: FiltroPesquisa;
-  }): Promise<{ mensagem: string; arquivo_uuid: string }> {
-    return this.req("/v5/cnpj/pesquisa/arquivo", {
-      method: "POST",
-      body: JSON.stringify({
-        total_linhas: opts.total_linhas ?? 0,
-        nome: opts.nome,
-        tipo: opts.tipo,
-        enviar_para: opts.enviar_para ?? [],
-        pesquisa: opts.pesquisa,
-      }),
-    });
-  }
-
-  /** Saldo da conta (consumo pré-pago). Caminho a confirmar na doc oficial. */
-  async saldo(): Promise<any> {
-    return this.req("/v5/saldo", { method: "GET" });
-  }
+  async saldo(): Promise<any> { return this.req("/v5/saldo", { method: "GET" }); }
 }
 
-// ---------------------------------------------------------------------------
-// MOTOR DE BASE SINDICAL — funções de alto nível usadas pelo sync
-// ---------------------------------------------------------------------------
-
-/** Monta o filtro a partir de um Escopo Sindical (CNAE + território). */
+/**
+ * Monta o filtro a partir de um Escopo Sindical (CNAE + território).
+ * CNAE → só dígitos (7). UF → minúsculo. Município → minúsculo SEM acento.
+ * Estado e cidade vão AMBOS no corpo, é o que amarra a coleta ao território.
+ */
 export function filtroDoEscopo(escopo: {
-  cnaes_principais: string[];
-  cnaes_secundarios?: string[];
-  incluir_secundaria?: boolean;
-  ufs?: string[];
-  municipios?: string[];
-  situacao_alvo?: string;
-  porte_codigos?: string[];
+  cnaes_principais?: string[] | null;
+  cnaes_secundarios?: string[] | null;
+  incluir_secundaria?: boolean | null;
+  ufs?: string[] | null;
+  municipios?: string[] | null;
+  situacao_alvo?: string | null;
+  porte_codigos?: string[] | null;
   capital_social_min?: number | null;
 }, pagina = 1, limite = 100): FiltroPesquisa {
-  return {
-    codigo_atividade_principal: escopo.cnaes_principais,
-    incluir_atividade_secundaria: escopo.incluir_secundaria ?? true,
-    codigo_atividade_secundaria: escopo.cnaes_secundarios ?? [],
-    uf: (escopo.ufs ?? []).map((u) => u.toLowerCase()),
-    municipio: (escopo.municipios ?? []).map((m) => m.toLowerCase()),
-    situacao_cadastral: [(escopo.situacao_alvo as any) ?? "ATIVA"],
-    porte_empresa: escopo.porte_codigos?.length ? { codigos: escopo.porte_codigos } : undefined,
-    capital_social: escopo.capital_social_min ? { minimo: escopo.capital_social_min } : undefined,
-    mais_filtros: { excluir_empresas_visualizadas: true },
+  const cnaes = (escopo.cnaes_principais ?? []).map(soDigitos).filter(Boolean);
+  const ufs = (escopo.ufs ?? []).map((u) => u.trim().toLowerCase()).filter(Boolean);
+  const muns = (escopo.municipios ?? []).map((m) => semAcento(m).trim().toLowerCase()).filter(Boolean);
+  const filtro: FiltroPesquisa = {
+    situacao_cadastral: [((escopo.situacao_alvo as any) || "ATIVA")],
     limite,
     pagina,
   };
+  if (cnaes.length) filtro.codigo_atividade_principal = cnaes;
+  if (escopo.incluir_secundaria && (escopo.cnaes_secundarios ?? []).length) {
+    filtro.incluir_atividade_secundaria = true;
+    filtro.codigo_atividade_secundaria = (escopo.cnaes_secundarios ?? []).map(soDigitos).filter(Boolean);
+  }
+  if (ufs.length) filtro.uf = ufs;              // <- estado amarrado
+  if (muns.length) filtro.municipio = muns;     // <- cidade amarrada (sem acento)
+  if (escopo.porte_codigos?.length) filtro.porte_empresa = { codigos: escopo.porte_codigos };
+  if (escopo.capital_social_min) filtro.capital_social = { minimo: escopo.capital_social_min };
+  return filtro;
+}
+
+/** Empresas recém-abertas no escopo nos últimos N dias (lead engine). */
+export function filtroEmpresasNovas(escopo: Parameters<typeof filtroDoEscopo>[0], ultimosDias = 30, pagina = 1): FiltroPesquisa {
+  return { ...filtroDoEscopo(escopo, pagina, 100), data_abertura: { ultimos_dias: ultimosDias } };
 }
 
 /**
- * Lead engine: empresas recém-abertas no escopo (CNAE + cidade) nos últimos N dias.
- * É o gatilho de captura de receita nova — o grande diferencial sindical.
+ * Normaliza um registro da resposta v5 (schema oficial):
+ * endereço aninhado em `endereco`, situacao_cadastral e porte_empresa são objetos.
+ * A resposta NÃO traz o CNAE — usamos o CNAE pesquisado como fallback (cnaeFallback).
  */
-export function filtroEmpresasNovas(escopo: Parameters<typeof filtroDoEscopo>[0], ultimosDias = 30): FiltroPesquisa {
+export function mapEmpresa(raw: any, cnaeFallback?: string | null): EmpresaBaseInput {
+  const end = raw.endereco ?? {};
+  const sit = raw.situacao_cadastral;
+  const situacao = typeof sit === "object" ? (sit?.situacao_cadastral ?? sit?.situacao_atual ?? null) : (sit ?? null);
+  const porte = typeof raw.porte_empresa === "object" ? (raw.porte_empresa?.descricao ?? raw.porte_empresa?.codigo ?? null) : (raw.porte ?? null);
+  const tel = raw.telefone ?? raw.ddd_telefone_1 ?? raw.contato_telefonico?.[0]?.completo ?? null;
+  const logradouro = [end.tipo_logradouro, end.logradouro].filter(Boolean).join(" ") || null;
   return {
-    ...filtroDoEscopo(escopo, 1, 100),
-    data_abertura: { ultimos_dias: ultimosDias },
-  };
-}
-
-/**
- * Normaliza um registro da Casa dos Dados para o shape de `empresas_base`.
- * ⚠️ Ajustar os nomes de campo conforme o schema CNPJPesquisaResposta real do tenant.
- */
-export function mapEmpresa(raw: any): EmpresaBaseInput {
-  return {
-    cnpj: (raw.cnpj ?? "").replace(/\D/g, ""),
+    cnpj: soDigitos(raw.cnpj ?? ""),
     razao_social: raw.razao_social ?? null,
     nome_fantasia: raw.nome_fantasia ?? null,
-    cnae_principal: raw.cnae_principal?.codigo ?? raw.codigo_atividade_principal ?? null,
-    cnae_descricao: raw.cnae_principal?.descricao ?? null,
-    situacao_cadastral: raw.situacao_cadastral ?? null,
+    cnae_principal: raw.atividade_principal?.codigo ?? raw.codigo_atividade_principal ?? cnaeFallback ?? null,
+    cnae_descricao: raw.atividade_principal?.descricao ?? null,
+    situacao_cadastral: situacao,
     data_abertura: raw.data_abertura ?? null,
-    natureza_juridica: raw.natureza_juridica?.descricao ?? raw.natureza_juridica ?? null,
+    natureza_juridica: raw.descricao_natureza_juridica ?? raw.natureza_juridica?.descricao ?? raw.natureza_juridica ?? null,
     capital_social: raw.capital_social != null ? Number(raw.capital_social) : null,
-    porte: raw.porte ?? null,
+    porte,
     email: raw.email ?? null,
-    telefone: raw.telefone ?? raw.ddd_telefone_1 ?? null,
-    endereco: raw.logradouro ?? null,
-    numero: raw.numero ?? null,
-    bairro: raw.bairro ?? null,
-    cidade: raw.municipio ?? null,
-    estado: raw.uf ?? null,
-    cep: raw.cep ?? null,
+    telefone: tel,
+    endereco: logradouro,
+    numero: end.numero ?? null,
+    bairro: end.bairro ?? null,
+    cidade: end.municipio ?? null,
+    estado: end.uf ?? null,
+    cep: end.cep ? soDigitos(end.cep) : null,
     fonte_dados: "casadosdados",
   };
 }
