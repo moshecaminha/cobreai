@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import CnaePicker, { CnaeTag } from "./cnae-picker";
 
 type Escopo = { id: string; nome: string; cnaes_principais: string[]; ufs: string[]; municipios: string[]; total_empresas: number };
 
@@ -13,8 +14,13 @@ export default function Escopos() {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [temApiKey, setTemApiKey] = useState(false);
   const [apiKey, setApiKey] = useState("");
+  const [cnaesCarregados, setCnaesCarregados] = useState<number | null>(null);
+  const [seedLoading, setSeedLoading] = useState(false);
   const [escopos, setEscopos] = useState<Escopo[]>([]);
-  const [f, setF] = useState({ nome: "", cnaes: "", ufs: "", municipios: "" });
+  const [nome, setNome] = useState("");
+  const [cnaes, setCnaes] = useState<CnaeTag[]>([]);
+  const [ufs, setUfs] = useState("");
+  const [municipios, setMunicipios] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,8 +34,21 @@ export default function Escopos() {
     setTemApiKey(!!emp?.casadosdados_api_key);
     const { data: es } = await sb.from("escopos_sindicais").select("id,nome,cnaes_principais,ufs,municipios,total_empresas").order("created_at", { ascending: false });
     setEscopos(es ?? []);
+    try { const r = await fetch("/api/cnaes/seed"); const d = await r.json(); setCnaesCarregados(d.total ?? 0); } catch {}
   }
   useEffect(() => { carregar(); }, []);
+
+  async function carregarCnaes() {
+    setSeedLoading(true); setMsg(null);
+    try {
+      const r = await fetch("/api/cnaes/seed", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.erro || "falha");
+      setCnaesCarregados(d.total);
+      setMsg(`Catálogo de CNAEs carregado: ${d.total} atividades.`);
+    } catch (e: any) { setMsg(`Erro ao carregar CNAEs: ${e.message}`); }
+    finally { setSeedLoading(false); }
+  }
 
   async function salvarApiKey() {
     if (!empresaId || !apiKey) return;
@@ -40,19 +59,19 @@ export default function Escopos() {
   }
 
   async function criar() {
-    if (!empresaId || !f.nome) return;
+    if (!empresaId || !nome) return;
     setLoading(true); setMsg(null);
     const arr = (s: string) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
     const { error } = await sb.from("escopos_sindicais").insert({
       empresa_id: empresaId,
-      nome: f.nome,
-      cnaes_principais: arr(f.cnaes),
-      ufs: arr(f.ufs).map((x) => x.toUpperCase()),
-      municipios: arr(f.municipios),
+      nome,
+      cnaes_principais: cnaes.map((c) => c.codigo),
+      ufs: arr(ufs).map((x) => x.toUpperCase()),
+      municipios: arr(municipios),
     });
     setLoading(false);
     if (error) { setMsg("Erro ao criar escopo."); return; }
-    setF({ nome: "", cnaes: "", ufs: "", municipios: "" });
+    setNome(""); setCnaes([]); setUfs(""); setMunicipios("");
     carregar();
   }
 
@@ -61,6 +80,17 @@ export default function Escopos() {
       <Link href="/dashboard" className="text-sm text-ink-300 hover:text-ink-100">← Painel</Link>
       <h1 className="mt-3 font-display text-2xl font-bold">Escopos sindicais</h1>
       <p className="mt-1 text-ink-300">Defina CNAE + território. A plataforma busca essas empresas na Receita (Casa dos Dados).</p>
+
+      {cnaesCarregados === 0 && (
+        <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-5">
+          <div className="font-medium">Carregar catálogo de CNAEs</div>
+          <p className="mt-1 text-sm text-ink-300">Baixe a lista oficial do IBGE uma vez para habilitar a busca por palavra.</p>
+          <button onClick={carregarCnaes} disabled={seedLoading}
+            className="mt-3 rounded-lg bg-recover-500 px-4 py-2 font-medium text-navy-900 disabled:opacity-50">
+            {seedLoading ? "Carregando…" : "Carregar CNAEs do IBGE"}
+          </button>
+        </div>
+      )}
 
       {!temApiKey && (
         <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 p-5">
@@ -77,14 +107,26 @@ export default function Escopos() {
 
       <div className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-navy-800/60 p-6">
         <div className="font-display text-lg font-bold">Novo escopo</div>
-        <Campo label="Nome *" v={f.nome} on={(e) => setF({ ...f, nome: e.target.value })} ph="Comércio varejista de Recife" />
-        <Campo label="CNAEs principais (separe por vírgula)" v={f.cnaes} on={(e) => setF({ ...f, cnaes: e.target.value })} ph="4711301, 4712100" />
+        <div>
+          <label className="block text-xs text-ink-500">Nome *</label>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Comércio varejista de Recife"
+            className="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500" />
+        </div>
+        <CnaePicker value={cnaes} onChange={setCnaes} />
         <div className="grid grid-cols-2 gap-4">
-          <Campo label="UFs" v={f.ufs} on={(e) => setF({ ...f, ufs: e.target.value })} ph="PE" />
-          <Campo label="Municípios" v={f.municipios} on={(e) => setF({ ...f, municipios: e.target.value })} ph="Recife, Olinda" />
+          <div>
+            <label className="block text-xs text-ink-500">UFs</label>
+            <input value={ufs} onChange={(e) => setUfs(e.target.value)} placeholder="PE"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500" />
+          </div>
+          <div>
+            <label className="block text-xs text-ink-500">Municípios</label>
+            <input value={municipios} onChange={(e) => setMunicipios(e.target.value)} placeholder="Recife, Olinda"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500" />
+          </div>
         </div>
         {msg && <p className="text-sm text-recover-400">{msg}</p>}
-        <button onClick={criar} disabled={loading || !f.nome}
+        <button onClick={criar} disabled={loading || !nome}
           className="justify-self-start rounded-lg bg-recover-500 px-5 py-2.5 font-medium text-navy-900 disabled:opacity-50">
           {loading ? "Salvando…" : "Criar escopo"}
         </button>
@@ -106,15 +148,5 @@ export default function Escopos() {
         ))}
       </div>
     </main>
-  );
-}
-
-function Campo({ label, v, on, ph }: { label: string; v: string; on: (e: React.ChangeEvent<HTMLInputElement>) => void; ph?: string }) {
-  return (
-    <div>
-      <label className="block text-xs text-ink-500">{label}</label>
-      <input value={v} onChange={on} placeholder={ph}
-        className="mt-1 w-full rounded-lg border border-white/10 bg-navy-900 px-3 py-2.5 text-ink-100 outline-none focus:border-recover-500" />
-    </div>
   );
 }
