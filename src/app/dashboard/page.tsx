@@ -38,11 +38,16 @@ export default async function Dashboard() {
           </div>
           <p className="mt-1 text-sm text-ink-500">{user.email}</p>
         </div>
-        <form action="/auth/signout" method="post">
-          <button className="rounded-lg border border-white/15 px-4 py-2 text-sm text-ink-100 hover:bg-white/5">
-            Sair
-          </button>
-        </form>
+        <div className="flex items-center gap-2">
+          <a href="/dashboard/empresa" className="rounded-lg border border-white/15 px-4 py-2 text-sm text-ink-100 hover:bg-white/5">
+            Dados do sindicato
+          </a>
+          <form action="/auth/signout" method="post">
+            <button className="rounded-lg border border-white/15 px-4 py-2 text-sm text-ink-100 hover:bg-white/5">
+              Sair
+            </button>
+          </form>
+        </div>
       </header>
 
       <h1 className="mt-8 font-display text-2xl font-bold">Painel</h1>
